@@ -2,9 +2,12 @@ import User from "../models/user.js";
 import Seller from "../models/seller.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { env, assertJwtEnv } from "../config/env.js";
 
 const login = async (req , res) => {
    try {
+     assertJwtEnv();
+
      const {email , password} = req.body;
      const user = await User.findOne({email}).populate("sellerId");
      if(!user){
@@ -37,7 +40,7 @@ const login = async (req , res) => {
      }
      
      const token = jwt.sign({_id: user._id , role: user.role},
-     process.env.JWT_KEY , {expiresIn: "10d"}
+     env.jwtKey , {expiresIn: "10d"}
      );
 
     // Build user response with seller info

@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import connectToDb from "./db.js";
+import { assertMongoEnv } from "./config/env.js";
 import authRouter from './routes/auth.js';
 import BuyerRoutes from "./routes/buyerRoutes.js";
 import itemRoutes from "./routes/itemRoutes.js";
@@ -13,8 +14,20 @@ import userRouter from "./routes/user.js";
 dotenv.config();
 const app = express();
 let dbConnectionPromise = null;
+let envValidationError = null;
+
+try {
+  assertMongoEnv();
+} catch (error) {
+  envValidationError = error;
+  console.error(error.message);
+}
 
 const ensureDbConnection = async () => {
+  if (envValidationError) {
+    throw envValidationError;
+  }
+
   if (mongoose.connection.readyState === 1) return;
 
   if (!dbConnectionPromise) {
