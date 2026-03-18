@@ -423,6 +423,50 @@ export const updateInvoice = async (req, res) => {
   }
 };
 
+export const deleteInvoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: "Invalid invoice id" });
+    }
+
+    const invoice = await Invoice.findById(id);
+    if (!invoice) {
+      return res.status(404).json({ success: false, error: "Invoice not found" });
+    }
+
+    const currentUserSellerId = getUserSellerId(req.user);
+    if (req.user.role !== "admin") {
+      if (!currentUserSellerId || invoice.sellerId.toString() !== currentUserSellerId) {
+        return res.status(403).json({
+          success: false,
+          error: "Access denied - You can only delete your seller's invoices",
+        });
+      }
+    }
+
+    if (invoice.isPublished) {
+      return res.status(400).json({
+        success: false,
+        error: "Published invoice cannot be deleted",
+      });
+    }
+
+    await Invoice.findByIdAndDelete(id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Invoice deleted successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Failed to delete invoice",
+    });
+  }
+};
+
 export const publishInvoice = async (req, res) => {
   try {
     const { id } = req.params;

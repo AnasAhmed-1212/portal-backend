@@ -19,10 +19,22 @@ const cleanEnvValue = (rawValue) => {
   return value;
 };
 
-const env = {
-  mongoUrl: cleanEnvValue(process.env.MONGO_URL || process.env.MONGODB_URI),
-  jwtKey: cleanEnvValue(process.env.JWT_KEY),
-};
+const env = {};
+
+Object.defineProperties(env, {
+  mongoUrl: {
+    enumerable: true,
+    get() {
+      return cleanEnvValue(process.env.MONGO_URL || process.env.MONGODB_URI);
+    },
+  },
+  jwtKey: {
+    enumerable: true,
+    get() {
+      return cleanEnvValue(process.env.JWT_KEY);
+    },
+  },
+});
 
 const assertMongoEnv = () => {
   if (!env.mongoUrl) {

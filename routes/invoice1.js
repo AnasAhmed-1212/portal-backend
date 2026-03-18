@@ -4,6 +4,7 @@ import {
   getAllInvoices,
   getByIdInvoices,
   updateInvoice,
+  deleteInvoice,
   publishInvoice,
   markInvoicePublished,
   getDashboardStats,
@@ -22,6 +23,7 @@ router.post("/items", createInvoice);
 // GET: Fetch all invoices
 router.get("/", getAllInvoices);
 router.put("/:id", updateInvoice);
+router.delete("/:id", deleteInvoice);
 
 // POST: Publish invoice to FBR and persist status
 router.post("/:id/publish", publishInvoice);

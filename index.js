@@ -67,6 +67,10 @@ app.use("/api/seller", sellerRoutes);
 app.use("/api/user", userRouter);
 app.use("/api/create", invoiceRouters);
 
-
-
+if (!process.env.VERCEL) {
+  const port = Number(process.env.PORT) || 2703;
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+  });
+}
 export default app;
