@@ -10,6 +10,7 @@ import itemRoutes from "./routes/itemRoutes.js";
 import sellerRoutes from "./routes/sellerRoutes.js"
 import invoiceRouters from "./routes/invoice1.js"
 import userRouter from "./routes/user.js";
+import sandboxRouter from "./routes/sandboxRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -66,6 +67,7 @@ app.use("/api/items", itemRoutes);
 app.use("/api/seller", sellerRoutes);
 app.use("/api/user", userRouter);
 app.use("/api/create", invoiceRouters);
+app.use("/api/sandbox", sandboxRouter);
 
 if (!process.env.VERCEL) {
   const port = Number(process.env.PORT) || 2703;

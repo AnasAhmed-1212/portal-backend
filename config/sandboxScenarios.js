@@ -1,0 +1,61 @@
+const defaultItem = {
+  hsCode: "0101.2100",
+  productDescription: "Test Product",
+  rate: "18%",
+  uoM: "Numbers, pieces, units",
+  quantity: 1,
+  totalValues: 0,
+  valueSalesExcludingST: 1000,
+  fixedNotifiedValueOrRetailPrice: 0,
+  salesTaxApplicable: 180,
+  salesTaxWithheldAtSource: 0,
+  extraTax: 0,
+  furtherTax: 0,
+  sroScheduleNo: "",
+  fedPayable: 0,
+  discount: 0,
+  saleType: "Goods at standard rate (default)",
+  sroItemSerialNo: "",
+};
+
+const scenario = (id, title, description, buyerRegistrationType, item = {}) => ({
+  id,
+  title,
+  description,
+  buyerRegistrationType,
+  item: { ...defaultItem, ...item },
+});
+
+export const sandboxScenarios = [
+  scenario("SN001", "Standard Rate — Registered Buyer", "Standard-rate goods sold to a sales-tax registered buyer.", "Registered", { productDescription: "Software License" }),
+  scenario("SN002", "Standard Rate — Unregistered Buyer", "Standard-rate goods sold to an unregistered buyer.", "Unregistered", { productDescription: "IT Equipment" }),
+  scenario("SN003", "Steel Melting and Re-rolling", "Sector-specific sale of melted or re-rolled steel.", "Unregistered", { hsCode: "7214.1010", productDescription: "Steel Bars", uoM: "MT", valueSalesExcludingST: 205000, salesTaxApplicable: 36900, saleType: "Steel melting and re-rolling" }),
+  scenario("SN004", "Ship Breaking", "Sale of scrap and recoverable material by ship breakers.", "Unregistered", { hsCode: "7204.1010", productDescription: "Scrap Steel", uoM: "MT", valueSalesExcludingST: 175000, salesTaxApplicable: 31500, saleType: "Ship breaking" }),
+  scenario("SN005", "Goods at Reduced Rate", "Reduced-rate goods listed in the Eighth Schedule.", "Unregistered", { hsCode: "0102.2930", productDescription: "Essential Commodity", rate: "1%", salesTaxApplicable: 10, salesTaxWithheldAtSource: 50.23, furtherTax: 120, sroScheduleNo: "EIGHTH SCHEDULE Table 1", fedPayable: 50.36, discount: 56.36, saleType: "Goods at Reduced Rate", sroItemSerialNo: "82" }),
+  scenario("SN006", "Exempt Goods", "Exempt goods listed in the Sixth Schedule.", "Registered", { hsCode: "0102.2930", productDescription: "Medical Equipment", rate: "Exempt", valueSalesExcludingST: 10, salesTaxApplicable: 0, salesTaxWithheldAtSource: 50.23, furtherTax: 120, sroScheduleNo: "6th Schd Table I", fedPayable: 50.36, discount: 56.36, saleType: "Exempt goods", sroItemSerialNo: "100" }),
+  scenario("SN007", "Zero-Rated Goods", "Goods taxable at zero percent with input-tax treatment.", "Unregistered", { productDescription: "Export Goods", rate: "0%", quantity: 100, valueSalesExcludingST: 100, salesTaxApplicable: 0, sroScheduleNo: "327(I)/2008", saleType: "Goods at zero-rate", sroItemSerialNo: "1" }),
+  scenario("SN008", "Third Schedule Goods", "Retail-price based taxation for Third Schedule goods.", "Unregistered", { productDescription: "Branded Product", quantity: 100, valueSalesExcludingST: 0, fixedNotifiedValueOrRetailPrice: 1000, saleType: "3rd Schedule Goods" }),
+  scenario("SN009", "Cotton Ginners", "Purchase or sale treatment involving registered cotton ginners.", "Registered", { productDescription: "Raw Cotton", quantity: 0, totalValues: 2500, valueSalesExcludingST: 2500, salesTaxApplicable: 450, saleType: "Cotton ginners" }),
+  scenario("SN010", "Telecommunication Services", "Telecommunication services under sector-specific tax rules.", "Unregistered", { productDescription: "Telecom Services", rate: "17%", quantity: 1000, valueSalesExcludingST: 100, salesTaxApplicable: 17, saleType: "Telecommunication services" }),
+  scenario("SN011", "Toll Manufacturing", "Processing of another party's raw material for conversion charges.", "Unregistered", { hsCode: "7214.9990", productDescription: "Processed Steel", uoM: "MT", valueSalesExcludingST: 205000, totalValues: 205000, salesTaxApplicable: 36900, saleType: "Toll Manufacturing" }),
+  scenario("SN012", "Petroleum Products", "Petroleum products with sector-specific rates and duties.", "Unregistered", { productDescription: "Petroleum Product", rate: "1.43%", quantity: 123, totalValues: 132, valueSalesExcludingST: 100, salesTaxApplicable: 1.43, salesTaxWithheldAtSource: 2, sroScheduleNo: "1450(I)/2021", saleType: "Petroleum Products", sroItemSerialNo: "4" }),
+  scenario("SN013", "Electricity Supply to Retailers", "Electricity supplied to retailers under special tax rules.", "Unregistered", { productDescription: "Electricity Units", rate: "5%", quantity: 123, totalValues: 212, salesTaxApplicable: 50, salesTaxWithheldAtSource: 11, sroScheduleNo: "1450(I)/2021", saleType: "Electricity Supply to Retailers", sroItemSerialNo: "4" }),
+  scenario("SN014", "Gas to CNG Stations", "Natural gas supplied to CNG filling stations.", "Unregistered", { productDescription: "Natural Gas", quantity: 123, saleType: "Gas to CNG stations" }),
+  scenario("SN015", "Mobile Phones", "Mobile handset sales under the Ninth Schedule.", "Unregistered", { productDescription: "Smartphone", quantity: 123, valueSalesExcludingST: 1234, salesTaxApplicable: 222.12, sroScheduleNo: "NINTH SCHEDULE", saleType: "Mobile Phones", sroItemSerialNo: "1(A)" }),
+  scenario("SN016", "Processing/Conversion of Goods", "Conversion or processing of raw material into finished goods.", "Unregistered", { productDescription: "Processing Service", rate: "5%", valueSalesExcludingST: 100, salesTaxApplicable: 5, saleType: "Processing/Conversion of Goods" }),
+  scenario("SN017", "Goods — FED in ST Mode", "Goods where Federal Excise Duty is charged in sales-tax mode.", "Unregistered", { productDescription: "FED Goods", rate: "8%", valueSalesExcludingST: 100, salesTaxApplicable: 8, saleType: "Goods (FED in ST Mode)" }),
+  scenario("SN018", "Services — FED in ST Mode", "Services where Federal Excise Duty is charged in sales-tax mode.", "Unregistered", { productDescription: "Consulting Service", rate: "8%", quantity: 20, salesTaxApplicable: 80, saleType: "Services (FED in ST Mode)" }),
+  scenario("SN019", "ICT Services", "ICT, consultancy, software, and related services.", "Unregistered", { hsCode: "0101.2900", productDescription: "Software Development", rate: "5%", valueSalesExcludingST: 100, salesTaxApplicable: 5, sroScheduleNo: "ICTO TABLE I", saleType: "Services", sroItemSerialNo: "1(ii)(ii)(a)" }),
+  scenario("SN020", "Electric Vehicles", "Reduced-rate sale of electric vehicles.", "Unregistered", { hsCode: "0101.2900", productDescription: "Electric Vehicle", rate: "1%", quantity: 122, salesTaxApplicable: 10, sroScheduleNo: "6th Schd Table III", saleType: "Electric Vehicle", sroItemSerialNo: "20" }),
+  scenario("SN021", "Cement/Concrete Block", "Fixed or unit-rate treatment for cement and concrete blocks.", "Unregistered", { productDescription: "Cement Bags", rate: "Rs.3 per unit", quantity: 12, valueSalesExcludingST: 123, fixedNotifiedValueOrRetailPrice: 3, salesTaxApplicable: 36, saleType: "Cement /Concrete Block" }),
+  scenario("SN022", "Potassium Chlorate", "Combined percentage and fixed-per-kilogram treatment.", "Unregistered", { hsCode: "3104.2000", productDescription: "Potassium Chlorate", rate: "18% + Rs.60/kg", uoM: "KG", valueSalesExcludingST: 100, fixedNotifiedValueOrRetailPrice: 60, salesTaxApplicable: 78, sroScheduleNo: "EIGHTH SCHEDULE Table 1", saleType: "Potassium Chlorate", sroItemSerialNo: "56" }),
+  scenario("SN023", "CNG Sales", "Regulated CNG sales with fixed-unit treatment.", "Unregistered", { productDescription: "CNG Fuel", rate: "Rs.200/unit", quantity: 123, valueSalesExcludingST: 234, fixedNotifiedValueOrRetailPrice: 200, salesTaxApplicable: 24600, sroScheduleNo: "581(1)/2024", saleType: "CNG Sales", sroItemSerialNo: "Region-I" }),
+  scenario("SN024", "Goods under SRO 297(I)/2023", "Goods covered by SRO 297(I)/2023.", "Unregistered", { productDescription: "SRO Product", rate: "25%", quantity: 123, salesTaxApplicable: 250, sroScheduleNo: "297(I)/2023-Table-I", saleType: "Goods as per SRO.297(I)/2023", sroItemSerialNo: "12" }),
+  scenario("SN025", "Non-Adjustable Pharmaceutical Supplies", "Pharmaceutical supplies taxed under non-adjustable treatment.", "Unregistered", { productDescription: "Medicine", rate: "0%", valueSalesExcludingST: 100, salesTaxApplicable: 0, sroScheduleNo: "EIGHTH SCHEDULE Table 1", saleType: "Non-Adjustable Supplies", sroItemSerialNo: "81" }),
+  scenario("SN026", "Retailer — Standard Rate Goods", "Standard-rate goods sold to end consumers by retailers.", "Registered", { productDescription: "Retail Product", quantity: 123 }),
+  scenario("SN027", "Retailer — Third Schedule Goods", "Retailer sale of Third Schedule goods using retail price.", "Registered", { productDescription: "FMCG Product", valueSalesExcludingST: 0, fixedNotifiedValueOrRetailPrice: 100, salesTaxApplicable: 18, saleType: "3rd Schedule Goods" }),
+  scenario("SN028", "Retailer — Reduced Rate Goods", "Retailer sale of essential goods at a reduced rate.", "Registered", { productDescription: "Baby Formula", rate: "1%", totalValues: 100, valueSalesExcludingST: 99.01, fixedNotifiedValueOrRetailPrice: 100, salesTaxApplicable: 0.99, sroScheduleNo: "EIGHTH SCHEDULE Table 1", saleType: "Goods at Reduced Rate", sroItemSerialNo: "70" }),
+];
+
+export const getSandboxScenario = (scenarioId) =>
+  sandboxScenarios.find((entry) => entry.id === scenarioId);

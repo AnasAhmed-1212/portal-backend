@@ -25,6 +25,8 @@ const toStringValue = (value, fallback = "") => {
   return String(value);
 };
 
+const normalizeRegistrationNumber = (value) => toStringValue(value, "").replace(/\D/g, "");
+
 const toRateString = (value) => {
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -139,7 +141,7 @@ const validateFbrPayloadPattern = (payload) => {
     fixedNotifiedValueOrRetailPrice: "number",
     salesTaxApplicable: "number",
     salesTaxWithheldAtSource: "number",
-    extraTax: "string",
+    extraTax: "number",
     furtherTax: "number",
     sroScheduleNo: "string",
     fedPayable: "number",
@@ -176,6 +178,20 @@ const validateFbrPayloadPattern = (payload) => {
     return { valid: false, error: "At least one item is required in items array" };
   }
 
+  for (const field of ["sellerNTNCNIC", "buyerNTNCNIC"]) {
+    if (!/^(?:\d{7}|\d{13})$/.test(payload[field])) {
+      return { valid: false, error: `${field} must contain exactly 7 or 13 digits` };
+    }
+  }
+
+  if (payload.scenarioId === "SN001" && payload.buyerRegistrationType !== "Registered") {
+    return { valid: false, error: "SN001 requires a Registered buyer" };
+  }
+
+  if (payload.scenarioId === "SN002" && payload.buyerRegistrationType !== "Unregistered") {
+    return { valid: false, error: "SN002 requires an Unregistered buyer" };
+  }
+
   for (let index = 0; index < payload.items.length; index += 1) {
     const item = payload.items[index];
     for (const [key, type] of Object.entries(itemSchema)) {
@@ -190,6 +206,10 @@ const validateFbrPayloadPattern = (payload) => {
         };
       }
     }
+
+    if (!item.productDescription.trim()) {
+      return { valid: false, error: `items[${index}].productDescription is required` };
+    }
   }
 
   return { valid: true };
@@ -198,11 +218,11 @@ const validateFbrPayloadPattern = (payload) => {
 const buildFbrPayload = (invoice) => ({
   invoiceType: toStringValue(invoice.invoiceType, "Sale Invoice"),
   invoiceDate: toDateOnly(invoice.invoiceDate),
-  sellerNTNCNIC: toStringValue(invoice.sellerNTNCNIC, ""),
+  sellerNTNCNIC: normalizeRegistrationNumber(invoice.sellerNTNCNIC),
   sellerBusinessName: toStringValue(invoice.sellerBusinessName, ""),
   sellerProvince: toStringValue(invoice.sellerProvince, ""),
   sellerAddress: toStringValue(invoice.sellerAddress, ""),
-  buyerNTNCNIC: toStringValue(invoice.buyerNTNCNIC, ""),
+  buyerNTNCNIC: normalizeRegistrationNumber(invoice.buyerNTNCNIC),
   buyerBusinessName: toStringValue(invoice.buyerBusinessName, ""),
   buyerProvince: toStringValue(invoice.buyerProvince, ""),
   buyerAddress: toStringValue(invoice.buyerAddress, ""),
@@ -215,12 +235,12 @@ const buildFbrPayload = (invoice) => ({
     rate: toRateString(item.rate),
     uoM: toStringValue(item.uoM, ""),
     quantity: toNumber(item.quantity, 0),
-    totalValues: toNumber(item.totalValues, 0),
+    totalValues: 0,
     valueSalesExcludingST: toNumber(item.valueSalesExcludingST, 0),
     fixedNotifiedValueOrRetailPrice: toNumber(item.fixedNotifiedValueOrRetailPrice, 0),
     salesTaxApplicable: toNumber(item.salesTaxApplicable, 0),
     salesTaxWithheldAtSource: toNumber(item.salesTaxWithheldAtSource, 0),
-    extraTax: toStringValue(item.extraTax, ""),
+    extraTax: toNumber(item.extraTax, 0),
     furtherTax: toNumber(item.furtherTax, 0),
     sroScheduleNo: toStringValue(item.sroScheduleNo, ""),
     fedPayable: toNumber(item.fedPayable, 0),
@@ -446,18 +466,13 @@ export const deleteInvoice = async (req, res) => {
       }
     }
 
-    if (invoice.isPublished) {
-      return res.status(400).json({
-        success: false,
-        error: "Published invoice cannot be deleted",
-      });
-    }
-
     await Invoice.findByIdAndDelete(id);
 
     return res.status(200).json({
       success: true,
-      message: "Invoice deleted successfully",
+      message: invoice.isPublished
+        ? "Published invoice deleted successfully"
+        : "Invoice deleted successfully",
     });
   } catch (error) {
     return res.status(500).json({
