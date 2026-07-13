@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import SandboxBuyer from "../models/sandboxBuyer.js";
 import SandboxSeller from "../models/sandboxSeller.js";
 import { getSandboxScenario, sandboxScenarios } from "../config/sandboxScenarios.js";
 
@@ -71,6 +72,29 @@ const validateSellerFields = (body) => {
   };
   if (!fields.sellerBusinessName || !fields.sellerProvince || !fields.sellerAddress) {
     return { error: "All sandbox seller fields are required" };
+  }
+  return { fields };
+};
+
+const validateBuyerFields = (body) => {
+  const buyerNTNCNIC = normalizeRegistrationNumber(body.buyerNTNCNIC);
+  if (!/^(?:\d{7}|\d{13})$/.test(buyerNTNCNIC)) {
+    return { error: "Sandbox buyer NTN/CNIC must contain 7 or 13 digits" };
+  }
+
+  const fields = {
+    buyerNTNCNIC,
+    buyerBusinessName: String(body.buyerBusinessName || "").trim(),
+    buyerProvince: String(body.buyerProvince || "").trim(),
+    buyerAddress: String(body.buyerAddress || "").trim(),
+    buyerRegistrationType: String(body.buyerRegistrationType || "").trim(),
+    invoiceRefNo: String(body.invoiceRefNo || "").trim(),
+  };
+  if (!fields.buyerBusinessName || !fields.buyerProvince || !fields.buyerAddress) {
+    return { error: "All sandbox buyer fields except invoice reference number are required" };
+  }
+  if (!["Registered", "Unregistered"].includes(fields.buyerRegistrationType)) {
+    return { error: "Sandbox buyer registration type must be Registered or Unregistered" };
   }
   return { fields };
 };
@@ -159,7 +183,118 @@ export const deleteSandboxSeller = async (req, res) => {
 
   const deleted = await SandboxSeller.findByIdAndDelete(sellerId);
   if (!deleted) return res.status(404).json({ success: false, error: "Sandbox seller not found" });
+  await SandboxBuyer.deleteMany({ sellerId });
   return res.status(200).json({ success: true, message: "Sandbox seller removed" });
+};
+
+export const getSandboxBuyers = async (req, res) => {
+  const { sellerId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(sellerId)) {
+    return res.status(400).json({ success: false, error: "Invalid sandbox seller id" });
+  }
+  const sellerExists = await SandboxSeller.exists({ _id: sellerId });
+  if (!sellerExists) return res.status(404).json({ success: false, error: "Sandbox seller not found" });
+
+  const buyers = await SandboxBuyer.find({ sellerId }).sort({ createdAt: -1 });
+  return res.status(200).json({ success: true, data: buyers });
+};
+
+export const createSandboxBuyer = async (req, res) => {
+  try {
+    const { sellerId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(sellerId)) {
+      return res.status(400).json({ success: false, error: "Invalid sandbox seller id" });
+    }
+    const sellerExists = await SandboxSeller.exists({ _id: sellerId });
+    if (!sellerExists) return res.status(404).json({ success: false, error: "Sandbox seller not found" });
+
+    const validation = validateBuyerFields(req.body);
+    if (validation.error) return res.status(400).json({ success: false, error: validation.error });
+
+    const existing = await SandboxBuyer.findOne({
+      sellerId,
+      buyerNTNCNIC: validation.fields.buyerNTNCNIC,
+    });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error: "This sandbox buyer is already saved for the selected seller",
+      });
+    }
+
+    const buyer = await SandboxBuyer.create({
+      sellerId,
+      ...validation.fields,
+      createdBy: req.user._id,
+    });
+    return res.status(201).json({
+      success: true,
+      message: "Sandbox buyer added successfully",
+      data: buyer,
+    });
+  } catch (error) {
+    const duplicate = error?.code === 11000;
+    return res.status(duplicate ? 409 : 500).json({
+      success: false,
+      error: duplicate
+        ? "This sandbox buyer is already saved for the selected seller"
+        : error.message,
+    });
+  }
+};
+
+export const updateSandboxBuyer = async (req, res) => {
+  try {
+    const { buyerId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(buyerId)) {
+      return res.status(400).json({ success: false, error: "Invalid sandbox buyer id" });
+    }
+
+    const buyer = await SandboxBuyer.findById(buyerId);
+    if (!buyer) return res.status(404).json({ success: false, error: "Sandbox buyer not found" });
+
+    const validation = validateBuyerFields(req.body);
+    if (validation.error) return res.status(400).json({ success: false, error: validation.error });
+
+    const duplicate = await SandboxBuyer.exists({
+      _id: { $ne: buyerId },
+      sellerId: buyer.sellerId,
+      buyerNTNCNIC: validation.fields.buyerNTNCNIC,
+    });
+    if (duplicate) {
+      return res.status(409).json({
+        success: false,
+        error: "This sandbox buyer is already saved for the selected seller",
+      });
+    }
+
+    Object.assign(buyer, validation.fields);
+    await buyer.save();
+    return res.status(200).json({
+      success: true,
+      message: "Sandbox buyer updated successfully",
+      data: buyer,
+    });
+  } catch (error) {
+    const duplicate = error?.code === 11000;
+    return res.status(duplicate ? 409 : 500).json({
+      success: false,
+      error: duplicate
+        ? "This sandbox buyer is already saved for the selected seller"
+        : error.message,
+    });
+  }
+};
+
+export const deleteSandboxBuyer = async (req, res) => {
+  const { buyerId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(buyerId)) {
+    return res.status(400).json({ success: false, error: "Invalid sandbox buyer id" });
+  }
+
+  const deleted = await SandboxBuyer.findByIdAndDelete(buyerId);
+  if (!deleted) return res.status(404).json({ success: false, error: "Sandbox buyer not found" });
+  return res.status(200).json({ success: true, message: "Sandbox buyer removed" });
 };
 
 const buildSandboxPayload = (seller, scenarioConfig, buyer, item) => ({
