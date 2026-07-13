@@ -195,6 +195,9 @@ const buildSandboxPayload = (seller, scenarioConfig, buyer, item) => ({
       discount: toNumber(item.discount),
       saleType: String(item.saleType || ""),
       sroItemSerialNo: String(item.sroItemSerialNo || ""),
+      ...(String(item.saleType || "").trim().toLowerCase() === "petroleum products"
+        ? { petroleumLevyOn: String(item.petroleumLevyOn || "").trim() }
+        : {}),
     },
   ],
 });
@@ -219,6 +222,12 @@ export const runSandboxScenario = async (req, res) => {
     const payload = buildSandboxPayload(seller, scenarioConfig, buyer, { ...scenarioConfig.item, ...item });
     if (!/^(?:\d{7}|\d{13})$/.test(payload.buyerNTNCNIC)) {
       return res.status(400).json({ success: false, error: "Buyer NTN/CNIC must contain 7 or 13 digits" });
+    }
+    if (
+      payload.items[0].saleType.trim().toLowerCase() === "petroleum products" &&
+      !payload.items[0].petroleumLevyOn
+    ) {
+      return res.status(400).json({ success: false, error: "Petroleum Levy On is required for Petroleum Products" });
     }
 
     const fbrResponse = await fetch(SANDBOX_ENDPOINTS[action], {
