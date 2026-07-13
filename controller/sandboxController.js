@@ -24,7 +24,11 @@ const parseResponseBody = async (response) => {
   try {
     return JSON.parse(rawBody);
   } catch {
-    return { raw: rawBody };
+    try {
+      return JSON.parse(rawBody.replace(/,\s*([}\]])/g, "$1"));
+    } catch {
+      return { raw: rawBody };
+    }
   }
 };
 
@@ -184,7 +188,7 @@ const buildSandboxPayload = (seller, scenarioConfig, buyer, item) => ({
       fixedNotifiedValueOrRetailPrice: toNumber(item.fixedNotifiedValueOrRetailPrice),
       salesTaxApplicable: toNumber(item.salesTaxApplicable),
       salesTaxWithheldAtSource: toNumber(item.salesTaxWithheldAtSource),
-      extraTax: item.extraTax === "" || toNumber(item.extraTax) === 0 ? "" : toNumber(item.extraTax),
+      extraTax: item.extraTax === "" ? "" : toNumber(item.extraTax),
       furtherTax: toNumber(item.furtherTax),
       sroScheduleNo: String(item.sroScheduleNo || ""),
       fedPayable: toNumber(item.fedPayable),
