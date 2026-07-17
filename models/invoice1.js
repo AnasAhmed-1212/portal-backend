@@ -22,7 +22,12 @@ const itemSchema = new mongoose.Schema({
   // Mixed allows for both Number 0 or String "" as per FBR validation
   
   saleType: { type: String, required: true },
-  sroItemSerialNo: { type: String, default: "" }
+  sroItemSerialNo: { type: String, default: "" },
+  petroleumLevyOn: {
+    type: String,
+    enum: ["", "no levy", "direct sale", "retail sale", "differential"],
+    default: ""
+  }
 });
 
 const invoiceSchema = new mongoose.Schema({

@@ -2,6 +2,8 @@ import Invoice from "../models/invoice1.js";
 import Seller from "../models/seller.js";
 import mongoose from "mongoose";
 
+const FBR_PRODUCTION_POST_ENDPOINT = "https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata";
+
 const getUserSellerId = (user) => user?.sellerId?._id?.toString?.() || user?.sellerId?.toString?.() || null;
 
 const getInvoiceTotal = (invoice) => {
@@ -112,6 +114,28 @@ const extractInvoiceNumber = (responseBody) => {
   return found ? String(found).trim() : "";
 };
 
+const extractFbrError = (responseBody) => {
+  const validation = responseBody?.validationResponse;
+  const errors = [];
+
+  if (validation?.errorCode) errors.push(`FBR ${validation.errorCode}`);
+  if (typeof validation?.error === "string" && validation.error.trim()) {
+    errors.push(validation.error.trim());
+  }
+
+  const itemStatuses = validation?.invoiceStatuses || responseBody?.invoiceStatuses;
+  for (const itemStatus of Array.isArray(itemStatuses) ? itemStatuses : []) {
+    const itemError = itemStatus?.error || itemStatus?.errorDescription || itemStatus?.errorCode;
+    if (itemError) errors.push(String(itemError));
+  }
+
+  if (errors.length) return [...new Set(errors)].join(": ");
+  if (typeof responseBody?.message === "string" && responseBody.message.trim()) {
+    return responseBody.message.trim();
+  }
+  return "FBR rejected invoice payload";
+};
+
 const validateFbrPayloadPattern = (payload) => {
   const topLevelSchema = {
     invoiceType: "string",
@@ -141,7 +165,7 @@ const validateFbrPayloadPattern = (payload) => {
     fixedNotifiedValueOrRetailPrice: "number",
     salesTaxApplicable: "number",
     salesTaxWithheldAtSource: "number",
-    extraTax: "number",
+    extraTax: "number-or-string",
     furtherTax: "number",
     sroScheduleNo: "string",
     fedPayable: "number",
@@ -184,19 +208,21 @@ const validateFbrPayloadPattern = (payload) => {
     }
   }
 
-  if (payload.scenarioId === "SN001" && payload.buyerRegistrationType !== "Registered") {
-    return { valid: false, error: "SN001 requires a Registered buyer" };
-  }
-
-  if (payload.scenarioId === "SN002" && payload.buyerRegistrationType !== "Unregistered") {
-    return { valid: false, error: "SN002 requires an Unregistered buyer" };
-  }
-
   for (let index = 0; index < payload.items.length; index += 1) {
     const item = payload.items[index];
     for (const [key, type] of Object.entries(itemSchema)) {
       if (!(key in item)) {
         return { valid: false, error: `Missing required item field: items[${index}].${key}` };
+      }
+
+      if (type === "number-or-string") {
+        if (typeof item[key] !== "number" && typeof item[key] !== "string") {
+          return {
+            valid: false,
+            error: `Invalid type for items[${index}].${key}. Expected number or string`,
+          };
+        }
+        continue;
       }
 
       if (typeof item[key] !== type) {
@@ -210,6 +236,7 @@ const validateFbrPayloadPattern = (payload) => {
     if (!item.productDescription.trim()) {
       return { valid: false, error: `items[${index}].productDescription is required` };
     }
+
   }
 
   return { valid: true };
@@ -240,7 +267,10 @@ const buildFbrPayload = (invoice) => ({
     fixedNotifiedValueOrRetailPrice: toNumber(item.fixedNotifiedValueOrRetailPrice, 0),
     salesTaxApplicable: toNumber(item.salesTaxApplicable, 0),
     salesTaxWithheldAtSource: toNumber(item.salesTaxWithheldAtSource, 0),
-    extraTax: toNumber(item.extraTax, 0),
+    extraTax:
+      item.extraTax === "" || item.extraTax === undefined || item.extraTax === null
+        ? ""
+        : toNumber(item.extraTax, 0),
     furtherTax: toNumber(item.furtherTax, 0),
     sroScheduleNo: toStringValue(item.sroScheduleNo, ""),
     fedPayable: toNumber(item.fedPayable, 0),
@@ -533,13 +563,14 @@ export const publishInvoice = async (req, res) => {
 
     let fbrResponse;
     try {
-      fbrResponse = await fetch("https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb", {
+      fbrResponse = await fetch(FBR_PRODUCTION_POST_ENDPOINT, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${seller.fbrToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify(fbrPayload),
+        signal: AbortSignal.timeout(30000),
       });
     } catch (networkError) {
       return res.status(502).json({
@@ -563,7 +594,7 @@ export const publishInvoice = async (req, res) => {
     if (!responseValidation.isValid) {
       return res.status(fbrResponse.ok ? 422 : fbrResponse.status).json({
         success: false,
-        error: parsedBody?.message || "FBR rejected invoice payload",
+        error: extractFbrError(parsedBody),
         validationError: responseValidation.reason,
         requestPayload: fbrPayload,
         fbrResponse: parsedBody,
