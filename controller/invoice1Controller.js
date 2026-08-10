@@ -27,7 +27,17 @@ const toStringValue = (value, fallback = "") => {
   return String(value);
 };
 
-const normalizeRegistrationNumber = (value) => toStringValue(value, "").replace(/\D/g, "");
+const normalizeRegistrationNumber = (value) => {
+  const compactValue = toStringValue(value, "").trim().replace(/[\s-]/g, "").toUpperCase();
+
+  // FBR registration numbers can be a letter followed by six digits (for example, D389505).
+  // Preserve that valid format while continuing to normalize numeric NTN/CNIC values.
+  if (/^[A-Z]\d{6}$/.test(compactValue)) {
+    return compactValue;
+  }
+
+  return compactValue.replace(/\D/g, "");
+};
 
 const toRateString = (value) => {
   if (typeof value === "string") {
@@ -203,8 +213,11 @@ const validateFbrPayloadPattern = (payload) => {
   }
 
   for (const field of ["sellerNTNCNIC", "buyerNTNCNIC"]) {
-    if (!/^(?:\d{7}|\d{13})$/.test(payload[field])) {
-      return { valid: false, error: `${field} must contain exactly 7 or 13 digits` };
+    if (!/^(?:\d{7}|\d{13}|[A-Z]\d{6})$/.test(payload[field])) {
+      return {
+        valid: false,
+        error: `${field} must contain 7 digits, 13 digits, or a letter followed by 6 digits`,
+      };
     }
   }
 
