@@ -27,6 +27,12 @@ const toStringValue = (value, fallback = "") => {
   return String(value);
 };
 
+const toCleanStringValue = (value, fallback = "") =>
+  toStringValue(value, fallback)
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const normalizeRegistrationNumber = (value) => {
   const compactValue = toStringValue(value, "").trim().replace(/[\s-]/g, "").toUpperCase();
 
@@ -91,6 +97,7 @@ const validateFbrPublishResponse = (httpOk, responseBody) => {
 
   const candidateCodes = [
     responseBody.statusCode,
+    responseBody.Code,
     responseBody.responseCode,
     responseBody.code,
     responseBody?.validationResponse?.statusCode,
@@ -140,6 +147,10 @@ const extractFbrError = (responseBody) => {
   }
 
   if (errors.length) return [...new Set(errors)].join(": ");
+  if (typeof responseBody?.error === "string" && responseBody.error.trim()) {
+    const code = responseBody.Code || responseBody.code;
+    return code ? `FBR ${code}: ${responseBody.error.trim()}` : responseBody.error.trim();
+  }
   if (typeof responseBody?.message === "string" && responseBody.message.trim()) {
     return responseBody.message.trim();
   }
@@ -160,7 +171,6 @@ const validateFbrPayloadPattern = (payload) => {
     buyerAddress: "string",
     buyerRegistrationType: "string",
     invoiceRefNo: "string",
-    scenarioId: "string",
     items: "array",
   };
 
@@ -175,7 +185,7 @@ const validateFbrPayloadPattern = (payload) => {
     fixedNotifiedValueOrRetailPrice: "number",
     salesTaxApplicable: "number",
     salesTaxWithheldAtSource: "number",
-    extraTax: "number-or-string",
+    extraTax: "number",
     furtherTax: "number",
     sroScheduleNo: "string",
     fedPayable: "number",
@@ -228,16 +238,6 @@ const validateFbrPayloadPattern = (payload) => {
         return { valid: false, error: `Missing required item field: items[${index}].${key}` };
       }
 
-      if (type === "number-or-string") {
-        if (typeof item[key] !== "number" && typeof item[key] !== "string") {
-          return {
-            valid: false,
-            error: `Invalid type for items[${index}].${key}. Expected number or string`,
-          };
-        }
-        continue;
-      }
-
       if (typeof item[key] !== type) {
         return {
           valid: false,
@@ -250,47 +250,72 @@ const validateFbrPayloadPattern = (payload) => {
       return { valid: false, error: `items[${index}].productDescription is required` };
     }
 
+    if (
+      item.saleType.trim().toLowerCase() === "petroleum products" &&
+      !["no levy", "direct sale", "retail sale", "differential"].includes(item.petroleumLevyOn)
+    ) {
+      return {
+        valid: false,
+        error: `items[${index}].petroleumLevyOn is required for Petroleum Products`,
+      };
+    }
+
   }
 
   return { valid: true };
 };
 
+const buildFbrItem = (item) => {
+  const valueSalesExcludingST = toNumber(item.valueSalesExcludingST, 0);
+  const salesTaxApplicable = toNumber(item.salesTaxApplicable, 0);
+  const extraTax = toNumber(item.extraTax, 0);
+  const furtherTax = toNumber(item.furtherTax, 0);
+  const fedPayable = toNumber(item.fedPayable, 0);
+  const saleType = toCleanStringValue(item.saleType, "");
+  const calculatedTotal =
+    valueSalesExcludingST + salesTaxApplicable + extraTax + furtherTax;
+  const storedTotal = toNumber(item.totalValues, calculatedTotal);
+
+  return {
+    hsCode: toCleanStringValue(item.hsCode, ""),
+    productDescription: toCleanStringValue(item.productDescription, ""),
+    rate: toRateString(item.rate),
+    uoM: toCleanStringValue(item.uoM, ""),
+    quantity: toNumber(item.quantity, 0),
+    totalValues: storedTotal,
+    valueSalesExcludingST,
+    fixedNotifiedValueOrRetailPrice: toNumber(item.fixedNotifiedValueOrRetailPrice, 0),
+    salesTaxApplicable,
+    salesTaxWithheldAtSource: toNumber(item.salesTaxWithheldAtSource, 0),
+    extraTax,
+    furtherTax,
+    sroScheduleNo: toCleanStringValue(item.sroScheduleNo, ""),
+    fedPayable,
+    discount: toNumber(item.discount, 0),
+    saleType,
+    sroItemSerialNo: toCleanStringValue(item.sroItemSerialNo, ""),
+    ...(saleType.toLowerCase() === "petroleum products"
+      ? { petroleumLevyOn: toCleanStringValue(item.petroleumLevyOn, "").toLowerCase() }
+      : {}),
+  };
+};
+
 const buildFbrPayload = (invoice) => ({
-  invoiceType: toStringValue(invoice.invoiceType, "Sale Invoice"),
+  invoiceType: toCleanStringValue(invoice.invoiceType, "Sale Invoice"),
   invoiceDate: toDateOnly(invoice.invoiceDate),
   sellerNTNCNIC: normalizeRegistrationNumber(invoice.sellerNTNCNIC),
-  sellerBusinessName: toStringValue(invoice.sellerBusinessName, ""),
-  sellerProvince: toStringValue(invoice.sellerProvince, ""),
-  sellerAddress: toStringValue(invoice.sellerAddress, ""),
+  sellerBusinessName: toCleanStringValue(invoice.sellerBusinessName, ""),
+  sellerProvince: toCleanStringValue(invoice.sellerProvince, ""),
+  sellerAddress: toCleanStringValue(invoice.sellerAddress, ""),
   buyerNTNCNIC: normalizeRegistrationNumber(invoice.buyerNTNCNIC),
-  buyerBusinessName: toStringValue(invoice.buyerBusinessName, ""),
-  buyerProvince: toStringValue(invoice.buyerProvince, ""),
-  buyerAddress: toStringValue(invoice.buyerAddress, ""),
-  buyerRegistrationType: toStringValue(invoice.buyerRegistrationType, "Registered"),
-  invoiceRefNo: toStringValue(invoice.invoiceRefNo, ""),
-  scenarioId: toStringValue(invoice.scenarioId, "SN000"),
-  items: (invoice.items || []).map((item) => ({
-    hsCode: toStringValue(item.hsCode, ""),
-    productDescription: toStringValue(item.productDescription, ""),
-    rate: toRateString(item.rate),
-    uoM: toStringValue(item.uoM, ""),
-    quantity: toNumber(item.quantity, 0),
-    totalValues: 0,
-    valueSalesExcludingST: toNumber(item.valueSalesExcludingST, 0),
-    fixedNotifiedValueOrRetailPrice: toNumber(item.fixedNotifiedValueOrRetailPrice, 0),
-    salesTaxApplicable: toNumber(item.salesTaxApplicable, 0),
-    salesTaxWithheldAtSource: toNumber(item.salesTaxWithheldAtSource, 0),
-    extraTax:
-      item.extraTax === "" || item.extraTax === undefined || item.extraTax === null
-        ? ""
-        : toNumber(item.extraTax, 0),
-    furtherTax: toNumber(item.furtherTax, 0),
-    sroScheduleNo: toStringValue(item.sroScheduleNo, ""),
-    fedPayable: toNumber(item.fedPayable, 0),
-    discount: toNumber(item.discount, 0),
-    saleType: toStringValue(item.saleType, ""),
-    sroItemSerialNo: toStringValue(item.sroItemSerialNo, ""),
-  })),
+  buyerBusinessName: toCleanStringValue(invoice.buyerBusinessName, ""),
+  buyerProvince: toCleanStringValue(invoice.buyerProvince, ""),
+  buyerAddress: toCleanStringValue(invoice.buyerAddress, ""),
+  buyerRegistrationType: toCleanStringValue(invoice.buyerRegistrationType, "Registered"),
+  invoiceRefNo: /^(debit|credit)\s+note$/i.test(toCleanStringValue(invoice.invoiceType, ""))
+    ? toCleanStringValue(invoice.invoiceRefNo, "")
+    : "",
+  items: (invoice.items || []).map(buildFbrItem),
 });
 
 export const createInvoice = async (req, res) => {
