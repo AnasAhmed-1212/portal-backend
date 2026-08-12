@@ -331,7 +331,7 @@ const buildSandboxPayload = (seller, scenarioConfig, buyer, item) => ({
       saleType: String(item.saleType || ""),
       sroItemSerialNo: String(item.sroItemSerialNo || ""),
       ...(String(item.saleType || "").trim().toLowerCase() === "petroleum products"
-        ? { petroleumLevyOn: String(item.petroleumLevyOn || "").trim() }
+        ? { petroleumLevyOn: toNumber(item.petroleumLevyOn, Number.NaN) }
         : {}),
     },
   ],
@@ -360,9 +360,9 @@ export const runSandboxScenario = async (req, res) => {
     }
     if (
       payload.items[0].saleType.trim().toLowerCase() === "petroleum products" &&
-      !payload.items[0].petroleumLevyOn
+      (!Number.isFinite(payload.items[0].petroleumLevyOn) || payload.items[0].petroleumLevyOn < 0)
     ) {
-      return res.status(400).json({ success: false, error: "Petroleum Levy On is required for Petroleum Products" });
+      return res.status(400).json({ success: false, error: "Petroleum Levy On must be a non-negative number for Petroleum Products" });
     }
 
     const fbrResponse = await fetch(SANDBOX_ENDPOINTS[action], {

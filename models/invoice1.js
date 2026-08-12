@@ -24,9 +24,9 @@ const itemSchema = new mongoose.Schema({
   saleType: { type: String, required: true },
   sroItemSerialNo: { type: String, default: "" },
   petroleumLevyOn: {
-    type: String,
-    enum: ["", "no levy", "direct sale", "retail sale", "differential"],
-    default: ""
+    // Mixed keeps old invoices containing "no levy" readable while new writes use a number.
+    type: mongoose.Schema.Types.Mixed,
+    default: 0
   }
 });
 

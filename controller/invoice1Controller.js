@@ -33,6 +33,35 @@ const toCleanStringValue = (value, fallback = "") =>
     .replace(/\s+/g, " ")
     .trim();
 
+const toPetroleumLevyNumber = (value, fallback = Number.NaN) => {
+  // Backward compatibility for invoices saved before this field became numeric.
+  if (String(value ?? "").trim().toLowerCase() === "no levy") return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+const normalizeInvoicePetroleumLevies = (items) => {
+  if (!Array.isArray(items)) return items;
+
+  const normalizedItems = items.map((item, index) => {
+    const normalizedItem = { ...item };
+    const isPetroleumProduct =
+      toCleanStringValue(normalizedItem.saleType, "").toLowerCase() === "petroleum products";
+
+    if (isPetroleumProduct) {
+      const levy = toPetroleumLevyNumber(normalizedItem.petroleumLevyOn);
+      if (!Number.isFinite(levy)) {
+        throw new Error(`items[${index}].petroleumLevyOn must be a non-negative number`);
+      }
+      normalizedItem.petroleumLevyOn = levy;
+    }
+
+    return normalizedItem;
+  });
+
+  return normalizedItems;
+};
+
 const normalizeRegistrationNumber = (value) => {
   const compactValue = toStringValue(value, "").trim().replace(/[\s-]/g, "").toUpperCase();
 
@@ -252,11 +281,13 @@ const validateFbrPayloadPattern = (payload) => {
 
     if (
       item.saleType.trim().toLowerCase() === "petroleum products" &&
-      !["no levy", "direct sale", "retail sale", "differential"].includes(item.petroleumLevyOn)
+      (typeof item.petroleumLevyOn !== "number" ||
+        !Number.isFinite(item.petroleumLevyOn) ||
+        item.petroleumLevyOn < 0)
     ) {
       return {
         valid: false,
-        error: `items[${index}].petroleumLevyOn is required for Petroleum Products`,
+        error: `items[${index}].petroleumLevyOn must be a non-negative number for Petroleum Products`,
       };
     }
 
@@ -295,7 +326,7 @@ const buildFbrItem = (item) => {
     saleType,
     sroItemSerialNo: toCleanStringValue(item.sroItemSerialNo, ""),
     ...(saleType.toLowerCase() === "petroleum products"
-      ? { petroleumLevyOn: toCleanStringValue(item.petroleumLevyOn, "").toLowerCase() }
+      ? { petroleumLevyOn: toPetroleumLevyNumber(item.petroleumLevyOn) }
       : {}),
   };
 };
@@ -321,6 +352,7 @@ const buildFbrPayload = (invoice) => ({
 export const createInvoice = async (req, res) => {
   try {
     const invoiceData = { ...req.body };
+    invoiceData.items = normalizeInvoicePetroleumLevies(invoiceData.items);
     const currentUserSellerId = getUserSellerId(req.user);
 
     if (req.user.role !== "admin") {
@@ -494,6 +526,13 @@ export const updateInvoice = async (req, res) => {
     if (updates.items && (!Array.isArray(updates.items) || updates.items.length === 0)) {
       return res.status(400).json({ success: false, error: "At least one item is required" });
     }
+    if (updates.items) {
+      try {
+        updates.items = normalizeInvoicePetroleumLevies(updates.items);
+      } catch (validationError) {
+        return res.status(400).json({ success: false, error: validationError.message });
+      }
+    }
 
     Object.assign(invoice, updates);
     await invoice.save();
@@ -641,6 +680,11 @@ export const publishInvoice = async (req, res) => {
 
     invoice.isPublished = true;
     invoice.publishedAt = new Date();
+    invoice.items.forEach((item) => {
+      if (toCleanStringValue(item.saleType, "").toLowerCase() === "petroleum products") {
+        item.petroleumLevyOn = toPetroleumLevyNumber(item.petroleumLevyOn, 0);
+      }
+    });
     invoice.fbrResponse = parsedBody;
     const fbrInvoiceNumber = extractInvoiceNumber(parsedBody);
     if (fbrInvoiceNumber) {
