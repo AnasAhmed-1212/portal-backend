@@ -60,9 +60,6 @@ const serializeSeller = (seller) => ({
 
 const validateSellerFields = (body) => {
   const sellerNTNCNIC = normalizeRegistrationNumber(body.sellerNTNCNIC);
-  if (!/^(?:\d{7}|\d{13})$/.test(sellerNTNCNIC)) {
-    return { error: "Sandbox seller NTN/CNIC must contain 7 or 13 digits" };
-  }
 
   const fields = {
     sellerNTNCNIC,
