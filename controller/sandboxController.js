@@ -8,7 +8,15 @@ const SANDBOX_ENDPOINTS = {
   post: "https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb",
 };
 
-const normalizeRegistrationNumber = (value) => String(value || "").replace(/\D/g, "");
+const normalizeRegistrationNumber = (value) => {
+  const compactValue = String(value || "").trim().replace(/[\s-]/g, "").toUpperCase();
+
+  // An FBR NTN may be a letter followed by six digits (for example, D389505).
+  // Preserve that format instead of stripping the alphabetic prefix.
+  if (/^[A-Z]\d{6}$/.test(compactValue)) return compactValue;
+
+  return compactValue.replace(/\D/g, "");
+};
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -75,8 +83,8 @@ const validateSellerFields = (body) => {
 
 const validateBuyerFields = (body) => {
   const buyerNTNCNIC = normalizeRegistrationNumber(body.buyerNTNCNIC);
-  if (!/^(?:\d{7}|\d{13})$/.test(buyerNTNCNIC)) {
-    return { error: "Sandbox buyer NTN/CNIC must contain 7 or 13 digits" };
+  if (!/^(?:\d{7}|\d{13}|[A-Z]\d{6})$/.test(buyerNTNCNIC)) {
+    return { error: "Sandbox buyer NTN/CNIC must contain 7 digits, 13 digits, or a letter followed by 6 digits" };
   }
 
   const fields = {
@@ -352,8 +360,8 @@ export const runSandboxScenario = async (req, res) => {
     }
 
     const payload = buildSandboxPayload(seller, scenarioConfig, buyer, { ...scenarioConfig.item, ...item });
-    if (!/^(?:\d{7}|\d{13})$/.test(payload.buyerNTNCNIC)) {
-      return res.status(400).json({ success: false, error: "Buyer NTN/CNIC must contain 7 or 13 digits" });
+    if (!/^(?:\d{7}|\d{13}|[A-Z]\d{6})$/.test(payload.buyerNTNCNIC)) {
+      return res.status(400).json({ success: false, error: "Buyer NTN/CNIC must contain 7 digits, 13 digits, or a letter followed by 6 digits" });
     }
     if (
       payload.items[0].saleType.trim().toLowerCase() === "petroleum products" &&
