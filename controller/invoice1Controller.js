@@ -2,7 +2,12 @@ import Invoice from "../models/invoice1.js";
 import Seller from "../models/seller.js";
 import mongoose from "mongoose";
 
-const FBR_PRODUCTION_POST_ENDPOINT = "https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata";
+const FBR_API_BASE_URL = String(
+  process.env.FBR_API_BASE_URL || "https://gw.fbr.gov.pk/di_data/v1/di"
+).replace(/\/+$/, "");
+const FBR_PRODUCTION_VALIDATE_ENDPOINT = `${FBR_API_BASE_URL}/validateinvoicedata`;
+const FBR_PRODUCTION_POST_ENDPOINT = `${FBR_API_BASE_URL}/postinvoicedata`;
+const FBR_TRANSIENT_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 const getUserSellerId = (user) => user?.sellerId?._id?.toString?.() || user?.sellerId?.toString?.() || null;
 
@@ -96,6 +101,67 @@ const toDateOnly = (value) => {
 const hasNegativeText = (value) => {
   if (!value || typeof value !== "string") return false;
   return /(invalid|error|failed|failure|rejected|not\s*valid|exception)/i.test(value);
+};
+
+const cleanBearerToken = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^Bearer\s+/i, "")
+    .replace(/^['"]|['"]$/g, "")
+    .trim();
+
+const parseFbrResponseBody = async (response) => {
+  const rawBody = await response.text();
+  if (!rawBody.trim()) return {};
+
+  try {
+    return JSON.parse(rawBody);
+  } catch {
+    return { raw: rawBody };
+  }
+};
+
+const getNetworkErrorDetails = (error) => ({
+  message: error?.message || "fetch failed",
+  code: error?.cause?.code || error?.code || "",
+  cause: error?.cause?.message || "",
+});
+
+const wait = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+const sendFbrRequest = async ({ endpoint, token, payload, maxAttempts = 1 }) => {
+  let lastNetworkError = null;
+  let lastResult = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(30000),
+      });
+      const body = await parseFbrResponseBody(response);
+      lastResult = { response, body, attempt };
+
+      const shouldRetry =
+        attempt < maxAttempts && FBR_TRANSIENT_STATUSES.has(response.status);
+      if (!shouldRetry) return lastResult;
+    } catch (error) {
+      lastNetworkError = error;
+      if (attempt >= maxAttempts) throw error;
+    }
+
+    await wait(350 * attempt);
+  }
+
+  if (lastResult) return lastResult;
+  throw lastNetworkError || new Error("FBR request failed without a response");
 };
 
 const isSuccessCode = (code) => {
@@ -623,7 +689,8 @@ export const publishInvoice = async (req, res) => {
     if (!seller.isActive) {
       return res.status(400).json({ success: false, error: "Assigned seller is inactive" });
     }
-    if (!seller.fbrToken) {
+    const fbrToken = cleanBearerToken(seller.fbrToken);
+    if (!fbrToken) {
       return res.status(400).json({ success: false, error: "FBR token not configured for assigned seller" });
     }
 
@@ -638,41 +705,101 @@ export const publishInvoice = async (req, res) => {
       });
     }
 
-    let fbrResponse;
+    // Validate the exact production payload with FBR before attempting the
+    // irreversible post operation. Validation requests are safe to retry when
+    // the gateway returns a transient 5xx response.
+    let fbrValidationResult;
     try {
-      fbrResponse = await fetch(FBR_PRODUCTION_POST_ENDPOINT, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${seller.fbrToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(fbrPayload),
-        signal: AbortSignal.timeout(30000),
+      fbrValidationResult = await sendFbrRequest({
+        endpoint: FBR_PRODUCTION_VALIDATE_ENDPOINT,
+        token: fbrToken,
+        payload: fbrPayload,
+        maxAttempts: 2,
       });
     } catch (networkError) {
+      const networkDetails = getNetworkErrorDetails(networkError);
+      console.error("FBR validation network error:", networkDetails);
       return res.status(502).json({
         success: false,
-        error: "Failed to reach FBR API from server",
-        validationError: networkError?.message || "fetch failed",
+        error: "Failed to reach FBR validation API from server",
+        validationError: [networkDetails.message, networkDetails.code, networkDetails.cause]
+          .filter(Boolean)
+          .join(": "),
+        networkError: networkDetails,
+        phase: "validation",
         requestPayload: fbrPayload,
       });
     }
 
-    const rawBody = await fbrResponse.text();
-    let parsedBody;
-    try {
-      parsedBody = JSON.parse(rawBody);
-    } catch {
-      parsedBody = { raw: rawBody };
+    const validationResponse = fbrValidationResult.response;
+    const validationBody = fbrValidationResult.body;
+    const payloadResponseValidation = validateFbrPublishResponse(
+      validationResponse.ok,
+      validationBody
+    );
+
+    if (!payloadResponseValidation.isValid) {
+      const gatewayFailure = FBR_TRANSIENT_STATUSES.has(validationResponse.status);
+      return res.status(gatewayFailure ? 502 : validationResponse.ok ? 422 : validationResponse.status).json({
+        success: false,
+        error: gatewayFailure
+          ? "FBR validation gateway is temporarily unavailable"
+          : extractFbrError(validationBody),
+        validationError: gatewayFailure
+          ? `FBR returned HTTP ${validationResponse.status} while validating the payload`
+          : payloadResponseValidation.reason,
+        phase: "validation",
+        fbrHttpStatus: validationResponse.status,
+        attempts: fbrValidationResult.attempt,
+        requestPayload: fbrPayload,
+        fbrResponse: validationBody,
+      });
     }
+
+    // Do not automatically retry the actual publish call: a timeout or gateway
+    // error can happen after FBR has accepted the invoice, and retrying could
+    // create a duplicate fiscal invoice.
+    let fbrPublishResult;
+    try {
+      fbrPublishResult = await sendFbrRequest({
+        endpoint: FBR_PRODUCTION_POST_ENDPOINT,
+        token: fbrToken,
+        payload: fbrPayload,
+      });
+    } catch (networkError) {
+      const networkDetails = getNetworkErrorDetails(networkError);
+      console.error("FBR publish network error:", networkDetails);
+      return res.status(502).json({
+        success: false,
+        error: "Payload passed FBR validation, but the publish connection failed",
+        validationError: [networkDetails.message, networkDetails.code, networkDetails.cause]
+          .filter(Boolean)
+          .join(": "),
+        networkError: networkDetails,
+        phase: "publish",
+        payloadValidated: true,
+        requestPayload: fbrPayload,
+      });
+    }
+
+    const fbrResponse = fbrPublishResult.response;
+    const parsedBody = fbrPublishResult.body;
 
     const responseValidation = validateFbrPublishResponse(fbrResponse.ok, parsedBody);
 
     if (!responseValidation.isValid) {
-      return res.status(fbrResponse.ok ? 422 : fbrResponse.status).json({
+      const gatewayFailure = FBR_TRANSIENT_STATUSES.has(fbrResponse.status);
+      return res.status(gatewayFailure ? 502 : fbrResponse.ok ? 422 : fbrResponse.status).json({
         success: false,
-        error: extractFbrError(parsedBody),
-        validationError: responseValidation.reason,
+        error: gatewayFailure
+          ? "Payload passed FBR validation, but the publishing gateway failed"
+          : extractFbrError(parsedBody),
+        validationError: gatewayFailure
+          ? `FBR returned HTTP ${fbrResponse.status} during publishing`
+          : responseValidation.reason,
+        phase: "publish",
+        payloadValidated: true,
+        fbrHttpStatus: fbrResponse.status,
         requestPayload: fbrPayload,
         fbrResponse: parsedBody,
       });

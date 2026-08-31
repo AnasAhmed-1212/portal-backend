@@ -6,6 +6,7 @@ Set these values in Vercel Project Settings -> Environment Variables:
 
 - `MONGO_URL` (or `MONGODB_URI`)
 - `JWT_KEY`
+- `FBR_API_BASE_URL` (optional; defaults to `https://gw.fbr.gov.pk/di_data/v1/di`)
 
 Important:
 
