@@ -22,7 +22,9 @@ const BuyerSchema = new Schema({
   },
   ntnNumber: {
     type: String,
-    required: true,
+    required: [function () {
+      return this.registrationType === "Registered";
+    }, "NTN/CNIC is required for registered buyers"],
     trim: true
   },
   address: {

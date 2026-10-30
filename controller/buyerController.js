@@ -107,11 +107,9 @@ const updateBuyer = async (req, res) => {
       }
     }
 
-    const updatedBuyer = await Buyer.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    // Validate the complete document so registration changes also recheck NTN/CNIC.
+    buyer.set(req.body);
+    const updatedBuyer = await buyer.save();
 
     res.status(200).json({
       success: true,
