@@ -47,7 +47,14 @@ const invoiceSchema = new mongoose.Schema({
   sellerNTNCNIC: { type: String, required: true },
   sellerAddress: { type: String, required: true },
   
-  buyerNTNCNIC: { type: String, required: true },
+  buyerNTNCNIC: {
+    type: String,
+    trim: true,
+    default: "",
+    required: [function () {
+      return this.buyerRegistrationType !== "Unregistered";
+    }, "NTN/CNIC is required for registered buyers"],
+  },
   buyerBusinessName: { type: String, required: true },
   buyerProvince: { type: String, required: true },
   buyerAddress: { type: String, required: true },

@@ -83,7 +83,9 @@ const toRateString = (value) => {
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed) return "0%";
-    return trimmed.includes("%") ? trimmed : `${trimmed}%`;
+    if (/^exempt%?$/i.test(trimmed)) return "Exempt";
+    // Preserve reference API descriptions; only numeric rates need a percent sign.
+    return /^\d+(?:\.\d+)?$/.test(trimmed) ? `${trimmed}%` : trimmed;
   }
   return `${toNumber(value, 0)}%`;
 };
@@ -318,6 +320,9 @@ const validateFbrPayloadPattern = (payload) => {
   }
 
   for (const field of ["sellerNTNCNIC", "buyerNTNCNIC"]) {
+    if (field === "buyerNTNCNIC" && payload.buyerRegistrationType === "Unregistered" && !payload[field]) {
+      continue;
+    }
     if (!/^(?:\d{7}|\d{13}|[A-Z]\d{6})$/.test(payload[field])) {
       return {
         valid: false,
