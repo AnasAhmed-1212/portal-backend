@@ -1,3 +1,4 @@
+import { audit } from "../security/audit.js";
 import Seller from "../models/seller.js"
 
 export const addSeller = async (req, res) => {
@@ -32,6 +33,7 @@ export const addSeller = async (req, res) => {
     });
 
     await newSeller.save();
+    await audit(req, "seller.token.created", newSeller._id);
 
     res.status(201).json({
       success: true,
@@ -39,7 +41,7 @@ export const addSeller = async (req, res) => {
       data: newSeller
     });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: "Seller operation failed" });
   }
 };
 
@@ -48,7 +50,7 @@ export const getSellers = async (req, res) => {
     const sellers = await Seller.find().sort({ createdAt: -1 });
     res.status(200).json({ success: true, data: sellers });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: "Seller operation failed" });
   }
 };
 
@@ -68,7 +70,7 @@ export const getSellerById = async (req, res) => {
 
     res.status(200).json({ success: true, data: seller });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: "Seller operation failed" });
   }
 };
 
@@ -82,7 +84,6 @@ export const updateSeller = async (req, res) => {
       sellerBusinessName,
       sellerProvince,
       sellerAddress,
-      fbrToken,
       sellerEmail,
       sellerPhone
     };
@@ -92,11 +93,13 @@ export const updateSeller = async (req, res) => {
       updateData.isActive = isActive;
     }
 
-    const seller = await Seller.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    );
+    const seller = await Seller.findById(req.params.id);
+    if (seller) {
+      if (typeof fbrToken === "string" && fbrToken.trim()) updateData.fbrToken = fbrToken;
+      Object.assign(seller, Object.fromEntries(Object.entries(updateData).filter(([, value]) => value !== undefined)));
+      await seller.save();
+      if (updateData.fbrToken) await audit(req, "seller.token.replaced", seller._id);
+    }
 
     if (!seller) {
       return res.status(404).json({ success: false, error: "Seller not found" });
@@ -108,7 +111,7 @@ export const updateSeller = async (req, res) => {
       data: seller
     });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: "Seller operation failed" });
   }
 };
 
@@ -126,7 +129,7 @@ export const deleteSeller = async (req, res) => {
       message: "Seller deleted successfully"
     });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: "Seller operation failed" });
   }
 };
 
@@ -148,6 +151,6 @@ export const toggleSellerStatus = async (req, res) => {
       data: seller
     });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: "Seller operation failed" });
   }
 };

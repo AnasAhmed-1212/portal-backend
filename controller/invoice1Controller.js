@@ -1,3 +1,5 @@
+import { decryptToken, tokenContext } from "../security/tokenVault.js";
+import { audit } from "../security/audit.js";
 import Invoice from "../models/invoice1.js";
 import Seller from "../models/seller.js";
 import mongoose from "mongoose";
@@ -449,6 +451,11 @@ export const createInvoice = async (req, res) => {
       }
     }
 
+    // Publication status and upstream receipts are controlled only by the server.
+    delete invoiceData.isPublished;
+    delete invoiceData.publishedAt;
+    delete invoiceData.fbrResponse;
+    delete invoiceData.invoiceNumber;
     const newInvoice = new Invoice(invoiceData);
     const savedInvoice = await newInvoice.save();
 
@@ -687,14 +694,14 @@ export const publishInvoice = async (req, res) => {
       return res.status(400).json({ success: false, error: "Invoice is already published" });
     }
 
-    const seller = await Seller.findById(invoice.sellerId);
+    const seller = await Seller.findById(invoice.sellerId).select("+fbrToken");
     if (!seller) {
       return res.status(404).json({ success: false, error: "Seller not found for this invoice" });
     }
     if (!seller.isActive) {
       return res.status(400).json({ success: false, error: "Assigned seller is inactive" });
     }
-    const fbrToken = cleanBearerToken(seller.fbrToken);
+    const fbrToken = cleanBearerToken(decryptToken(seller.fbrToken, tokenContext("Seller", seller._id, "fbrToken")));
     if (!fbrToken) {
       return res.status(400).json({ success: false, error: "FBR token not configured for assigned seller" });
     }
@@ -823,6 +830,7 @@ export const publishInvoice = async (req, res) => {
       invoice.invoiceNumber = fbrInvoiceNumber;
     }
     await invoice.save();
+    await audit(req, "invoice.fbr.accepted", invoice._id);
 
     return res.status(200).json({
       success: true,
@@ -835,60 +843,6 @@ export const publishInvoice = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: error.message || "Failed to publish invoice",
-    });
-  }
-};
-
-export const markInvoicePublished = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { fbrResponse, requestPayload } = req.body || {};
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, error: "Invalid invoice id" });
-    }
-
-    const invoice = await Invoice.findById(id);
-    if (!invoice) {
-      return res.status(404).json({ success: false, error: "Invoice not found" });
-    }
-
-    const currentUserSellerId = getUserSellerId(req.user);
-    if (req.user.role !== "admin") {
-      if (!currentUserSellerId || invoice.sellerId.toString() !== currentUserSellerId) {
-        return res.status(403).json({
-          success: false,
-          error: "Access denied - You can only publish your seller's invoices",
-        });
-      }
-    }
-
-    if (invoice.isPublished) {
-      return res.status(400).json({ success: false, error: "Invoice is already published" });
-    }
-
-    invoice.isPublished = true;
-    invoice.publishedAt = new Date();
-    const fbrInvoiceNumber = extractInvoiceNumber(fbrResponse);
-    if (fbrInvoiceNumber) {
-      invoice.invoiceNumber = fbrInvoiceNumber;
-    }
-    invoice.fbrResponse = {
-      ...(typeof fbrResponse === "object" && fbrResponse ? fbrResponse : { raw: fbrResponse || "" }),
-      requestPayload: requestPayload || null,
-      publishedVia: "frontend-fallback",
-    };
-    await invoice.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Invoice marked as published successfully",
-      data: invoice,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: error.message || "Failed to mark invoice as published",
     });
   }
 };

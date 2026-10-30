@@ -1,3 +1,4 @@
+import fbrReferenceRouter from "./routes/fbrReference.js";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -48,7 +49,16 @@ const ensureDbConnection = async () => {
   await dbConnectionPromise;
 };
 
-app.use(cors());
+const allowedOrigins = (process.env.CORS_ORIGINS || (process.env.VERCEL ? "" : "http://localhost:5173"))
+  .split(",").map((value) => value.trim()).filter(Boolean);
+app.use(cors({ origin(origin, callback) {
+  callback(null, !origin || allowedOrigins.includes(origin));
+} }));
+app.use((req, res, next) => {
+  res.set("X-Content-Type-Options", "nosniff");
+  if (req.path.startsWith("/api/")) res.set("Cache-Control", "no-store");
+  next();
+});
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public/uploads"));
@@ -62,6 +72,7 @@ app.use(async (req, res, next) => {
   }
 });
 app.use("/api/auth", authRouter);
+app.use("/api/fbr/reference", fbrReferenceRouter);
 app.use("/api/buyer", BuyerRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/seller", sellerRoutes);

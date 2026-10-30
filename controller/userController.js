@@ -21,7 +21,7 @@ const updateProfile = async (req, res) => {
       if (req.body[key]) updates[key] = req.body[key];
     });
 
-    // if password provided, hash in model pre-save
+    if (updates.password) updates.password = await bcrypt.hash(updates.password, 10);
     const user = await User.findById(req.user._id);
     Object.assign(user, updates);
     await user.save();
@@ -223,7 +223,7 @@ const toggleUserStatus = async (req, res) => {
     res.status(200).json({
       success: true,
       message: user.isActive ? "User activated successfully" : "User deactivated successfully",
-      data: user
+      data: { _id: user._id, isActive: user.isActive }
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

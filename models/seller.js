@@ -1,3 +1,4 @@
+import { protectToken } from "../security/tokenVault.js";
 import mongoose from "mongoose";
 const { Schema } = mongoose;
 
@@ -21,9 +22,11 @@ const sellerSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  // FBR API Token - stored securely for each seller
+  // Server-only encrypted FBR credential
+  hasFbrToken: { type: Boolean, default: false },
   fbrToken: {
     type: String,
+    select: false,
     required: true,
     trim: true,
   },
@@ -47,6 +50,8 @@ const sellerSchema = new mongoose.Schema({
     trim: true,
   },
 }, { timestamps: true });
+
+protectToken(sellerSchema, { model: "Seller", field: "fbrToken", flag: 'hasFbrToken' });
 
 const Seller = mongoose.model("Seller", sellerSchema);
 export default Seller;

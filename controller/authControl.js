@@ -1,5 +1,4 @@
 import User from "../models/user.js";
-import Seller from "../models/seller.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { env, assertJwtEnv } from "../config/env.js";
@@ -23,10 +22,8 @@ const login = async (req , res) => {
      }
      
      // Check if assigned seller is active
-     if (user.role !== "admin" && user.sellerId) {
-       const sellerId = user.sellerId?._id || user.sellerId;
-       const seller = await Seller.findById(sellerId);
-       if (seller && !seller.isActive) {
+     if (user.role !== "admin") {
+       if (!user.sellerId || !user.sellerId.isActive) {
          return res.status(403).json({
            success: false,
            error: "Your assigned seller account is inactive. Please contact admin."
@@ -56,7 +53,7 @@ const login = async (req , res) => {
         sellerNTNCNIC: user.sellerId.sellerNTNCNIC,
         sellerProvince: user.sellerId.sellerProvince,
         sellerAddress: user.sellerId.sellerAddress,
-        fbrToken: user.sellerId.fbrToken,
+        hasFbrToken: user.sellerId.hasFbrToken,
         isActive: user.sellerId.isActive
       } : null
     };
@@ -83,7 +80,7 @@ const verify = (req , res) => {
        sellerNTNCNIC: user.sellerId.sellerNTNCNIC,
        sellerProvince: user.sellerId.sellerProvince,
        sellerAddress: user.sellerId.sellerAddress,
-       fbrToken: user.sellerId.fbrToken,
+       hasFbrToken: user.sellerId.hasFbrToken,
        isActive: user.sellerId.isActive
      } : null
    };

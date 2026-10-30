@@ -1,6 +1,5 @@
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
-import Seller from "../models/seller.js";
 import { env, assertJwtEnv } from "../config/env.js";
 
 const verifyUser = async (req, res, next) => {
@@ -37,11 +36,8 @@ const verifyUser = async (req, res, next) => {
       });
     }
 
-    if (user.role !== "admin" && user.sellerId) {
-      const sellerId = user.sellerId?._id || user.sellerId;
-      const seller = await Seller.findById(sellerId);
-
-      if (seller && !seller.isActive) {
+    if (user.role !== "admin") {
+      if (!user.sellerId || !user.sellerId.isActive) {
         return res.status(403).json({
           success: false,
           error: "Your assigned seller account is inactive. Please contact admin.",

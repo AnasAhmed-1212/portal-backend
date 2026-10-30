@@ -1,3 +1,5 @@
+import { decryptToken, tokenContext } from "../security/tokenVault.js";
+import { audit } from "../security/audit.js";
 import mongoose from "mongoose";
 import SandboxBuyer from "../models/sandboxBuyer.js";
 import SandboxSeller from "../models/sandboxSeller.js";
@@ -133,6 +135,7 @@ export const createSandboxSeller = async (req, res) => {
       isAssigned: true,
       createdBy: req.user._id,
     });
+    await audit(req, "sandbox.token.created", seller._id);
     const savedSeller = await SandboxSeller.findById(seller._id).select("+sandboxToken");
     return res.status(201).json({
       success: true,
@@ -142,7 +145,7 @@ export const createSandboxSeller = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      error: error.message,
+      error: "Sandbox operation failed",
     });
   }
 };
@@ -160,13 +163,14 @@ export const updateSandboxSeller = async (req, res) => {
     const validation = validateSellerFields(req.body);
     if (validation.error) return res.status(400).json({ success: false, error: validation.error });
 
-    const sandboxToken = cleanToken(req.body.sandboxToken) || seller.sandboxToken;
+    const sandboxToken = cleanToken(req.body.sandboxToken);
 
     Object.assign(seller, validation.fields, {
-      sandboxToken,
+      ...(sandboxToken ? { sandboxToken } : {}),
       isAssigned: true,
     });
     await seller.save();
+    if (sandboxToken) await audit(req, "sandbox.token.replaced", seller._id);
     return res.status(200).json({
       success: true,
       message: "Sandbox seller assignment updated",
@@ -175,7 +179,7 @@ export const updateSandboxSeller = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      error: error.message,
+      error: "Sandbox operation failed",
     });
   }
 };
@@ -373,7 +377,7 @@ export const runSandboxScenario = async (req, res) => {
     const fbrResponse = await fetch(SANDBOX_ENDPOINTS[action], {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${seller.sandboxToken}`,
+        Authorization: `Bearer ${decryptToken(seller.sandboxToken, tokenContext("SandboxSeller", seller._id, "sandboxToken"))}`,
         "content-type": "application/json",
       },
       body: JSON.stringify(payload),

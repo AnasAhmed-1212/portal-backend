@@ -6,7 +6,6 @@ import {
   updateInvoice,
   deleteInvoice,
   publishInvoice,
-  markInvoicePublished,
   getDashboardStats,
 } from "../controller/invoice1Controller.js";
 import authMiddleware from "../middleWare/authMiddleware.js";
@@ -27,7 +26,6 @@ router.delete("/:id", deleteInvoice);
 
 // POST: Publish invoice to FBR and persist status
 router.post("/:id/publish", publishInvoice);
-router.post("/:id/mark-published", markInvoicePublished);
 
 router.get("/:id", getByIdInvoices);
 

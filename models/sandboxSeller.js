@@ -1,3 +1,4 @@
+import { protectToken } from "../security/tokenVault.js";
 import mongoose from "mongoose";
 
 const scenarioResultSchema = new mongoose.Schema(
@@ -28,6 +29,8 @@ const sandboxSellerSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+protectToken(sandboxSellerSchema, { model: "SandboxSeller", field: "sandboxToken", flag: null });
 
 const SandboxSeller = mongoose.model("SandboxSeller", sandboxSellerSchema);
 export default SandboxSeller;
